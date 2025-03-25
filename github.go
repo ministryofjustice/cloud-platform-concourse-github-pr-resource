@@ -18,6 +18,7 @@ import (
 )
 
 // Github for testing purposes.
+//
 //go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -o fakes/fake_github.go . Github
 type Github interface {
 	ListPullRequests([]githubv4.PullRequestState) ([]*PullRequest, error)
@@ -125,17 +126,19 @@ func (m *GithubClient) ListPullRequests(prStates []githubv4.PullRequestState) ([
 					}
 				}
 				PageInfo struct {
-					EndCursor   githubv4.String
-					HasNextPage bool
+					EndCursor       githubv4.String
+					HasNextPage     bool
+					StartCursor     githubv4.String // StartCursor for reverse pagination
+					HasPreviousPage bool            // HasPreviousPage for reverse pagination
 				}
-			} `graphql:"pullRequests(first:$prFirst,states:$prStates,after:$prCursor)"`
+			} `graphql:"pullRequests(last:$prLast,states:$prStates,before:$prCursor, orderBy: {field: UPDATED_AT, direction: ASC})"`
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
 	}
 
 	vars := map[string]interface{}{
 		"repositoryOwner": githubv4.String(m.Owner),
 		"repositoryName":  githubv4.String(m.Repository),
-		"prFirst":         githubv4.Int(100),
+		"prLast":          githubv4.Int(100),
 		"prStates":        prStates,
 		"prCursor":        (*githubv4.String)(nil),
 		"commitsLast":     githubv4.Int(1),
@@ -144,6 +147,7 @@ func (m *GithubClient) ListPullRequests(prStates []githubv4.PullRequestState) ([
 	}
 
 	var response []*PullRequest
+	pageCount := 0 // Counter to track the number of pages fetched
 	for {
 		if err := m.V4.Query(context.TODO(), &query, vars); err != nil {
 			return nil, err
@@ -163,10 +167,13 @@ func (m *GithubClient) ListPullRequests(prStates []githubv4.PullRequestState) ([
 				})
 			}
 		}
-		if !query.Repository.PullRequests.PageInfo.HasNextPage {
-			break
+
+		// Increment the page counter
+		pageCount++
+		if pageCount >= 3 || !query.Repository.PullRequests.PageInfo.HasPreviousPage {
+			break // Stop fetching after 3 pages or if there are no more pages
 		}
-		vars["prCursor"] = query.Repository.PullRequests.PageInfo.EndCursor
+		vars["prCursor"] = query.Repository.PullRequests.PageInfo.StartCursor
 	}
 	return response, nil
 }
