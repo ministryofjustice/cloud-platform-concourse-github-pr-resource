@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   BUILD_DIR: build
-  DOCKER_REPO: ministryofjustice/cloud-platform-concourse-github-pr-resource
+  DOCKER_REPO: teliaoss/github-pr-resource
 
 tasks:
   default:
@@ -37,7 +37,7 @@ tasks:
   docker:
     desc: Build docker image under dev tag.
     cmds:
-    - docker build -t {{.DOCKER_REPO}} .
+    - docker build -t {{.DOCKER_REPO}}:dev .
 
   build:
     desc: Build check/in/out artifacts
