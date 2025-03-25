@@ -37,7 +37,7 @@ tasks:
   docker:
     desc: Build docker image under dev tag.
     cmds:
-    - docker build -t {{.DOCKER_REPO}}:dev .
+    - docker build -t {{.DOCKER_REPO}} .
 
   build:
     desc: Build check/in/out artifacts
