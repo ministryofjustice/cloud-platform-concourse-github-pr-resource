@@ -11,6 +11,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v28/github"
 	"github.com/shurcooL/githubv4"
@@ -18,6 +19,7 @@ import (
 )
 
 // Github for testing purposes.
+//
 //go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -o fakes/fake_github.go . Github
 type Github interface {
 	ListPullRequests([]githubv4.PullRequestState) ([]*PullRequest, error)
@@ -105,7 +107,8 @@ func (m *GithubClient) ListPullRequests(prStates []githubv4.PullRequestState) ([
 				Edges []struct {
 					Node struct {
 						PullRequestObject
-						Reviews struct {
+						MergedAt string // Add this field to retrieve the merged timestamp
+						Reviews  struct {
 							TotalCount int
 						} `graphql:"reviews(states: $prReviewStates)"`
 						Commits struct {
@@ -135,12 +138,12 @@ func (m *GithubClient) ListPullRequests(prStates []githubv4.PullRequestState) ([
 	vars := map[string]interface{}{
 		"repositoryOwner": githubv4.String(m.Owner),
 		"repositoryName":  githubv4.String(m.Repository),
-		"prFirst":         githubv4.Int(100),
+		"prFirst":         githubv4.Int(50),
 		"prStates":        prStates,
 		"prCursor":        (*githubv4.String)(nil),
 		"commitsLast":     githubv4.Int(1),
 		"prReviewStates":  []githubv4.PullRequestReviewState{githubv4.PullRequestReviewStateApproved},
-		"labelsFirst":     githubv4.Int(100),
+		"labelsFirst":     githubv4.Int(10),
 	}
 
 	var response []*PullRequest
@@ -149,6 +152,17 @@ func (m *GithubClient) ListPullRequests(prStates []githubv4.PullRequestState) ([
 			return nil, err
 		}
 		for _, p := range query.Repository.PullRequests.Edges {
+			// Parse the mergedAt timestamp
+			mergedAt, err := time.Parse(time.RFC3339, p.Node.MergedAt)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse mergedAt timestamp: %s", err)
+			}
+
+			// Check if the pull request was merged in the last 7 days
+			if time.Since(mergedAt) > 7*24*time.Hour {
+				continue // Skip pull requests merged more than 7 days ago
+			}
+
 			labels := make([]LabelObject, len(p.Node.Labels.Edges))
 			for _, l := range p.Node.Labels.Edges {
 				labels = append(labels, l.Node.LabelObject)
